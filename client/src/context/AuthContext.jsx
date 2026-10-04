@@ -32,8 +32,15 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const updateWishlist = (wishlist) => {
+    if (!user) return;
+    saveUser({ ...user, wishlist });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isHost: user?.role === 'host' }}>
+    <AuthContext.Provider
+      value={{ user, login, register, logout, isHost: user?.role === 'host', updateWishlist }}
+    >
       {children}
     </AuthContext.Provider>
   );

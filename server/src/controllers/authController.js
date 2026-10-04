@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
+import Listing from '../models/Listing.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import generateToken from '../utils/generateToken.js';
 
@@ -8,6 +10,7 @@ const userResponse = (user) => ({
   email: user.email,
   role: user.role,
   avatar: user.avatar,
+  wishlist: user.wishlist || [],
   token: generateToken(user._id),
 });
 
@@ -50,4 +53,49 @@ export const login = asyncHandler(async (req, res) => {
 // GET /api/auth/me
 export const getMe = asyncHandler(async (req, res) => {
   res.json(req.user);
+});
+
+// GET /api/auth/wishlist (and /api/wishlist)
+export const getWishlist = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id).populate({
+    path: 'wishlist',
+    populate: { path: 'host', select: 'name' },
+  });
+  const listings = (user.wishlist || []).filter(Boolean);
+  res.json(listings);
+});
+
+// POST /api/auth/wishlist/:id (and /api/wishlist/:id)
+export const toggleWishlist = asyncHandler(async (req, res) => {
+  const listingId = req.params.id || req.body.listingId;
+  if (!listingId) {
+    res.status(400);
+    throw new Error('Listing ID is required');
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(listingId)) {
+    res.status(400);
+    throw new Error('Invalid listing ID format');
+  }
+
+  const listingExists = await Listing.exists({ _id: listingId });
+  if (!listingExists) {
+    res.status(404);
+    throw new Error('Listing not found');
+  }
+
+  const user = await User.findById(req.user._id);
+  const existsIndex = user.wishlist.findIndex((id) => id.toString() === listingId.toString());
+
+  let inWishlist;
+  if (existsIndex > -1) {
+    user.wishlist.splice(existsIndex, 1);
+    inWishlist = false;
+  } else {
+    user.wishlist.push(listingId);
+    inWishlist = true;
+  }
+
+  await user.save();
+  res.json({ inWishlist, wishlist: user.wishlist });
 });

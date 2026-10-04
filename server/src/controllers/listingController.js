@@ -1,7 +1,21 @@
+import mongoose from 'mongoose';
 import Listing from '../models/Listing.js';
 import Review from '../models/Review.js';
 import Booking from '../models/Booking.js';
 import asyncHandler from '../utils/asyncHandler.js';
+
+export const recalculateListingRating = async (listingId) => {
+  const id = typeof listingId === 'string' ? new mongoose.Types.ObjectId(listingId) : listingId;
+  const stats = await Review.aggregate([
+    { $match: { listing: id } },
+    { $group: { _id: '$listing', avg: { $avg: '$rating' }, count: { $sum: 1 } } },
+  ]);
+
+  const avgRating = stats.length > 0 ? Math.round(stats[0].avg * 10) / 10 : 0;
+  const reviewCount = stats.length > 0 ? stats[0].count : 0;
+
+  await Listing.findByIdAndUpdate(id, { avgRating, reviewCount });
+};
 
 // GET /api/listings?city=&type=&minPrice=&maxPrice=&guests=
 // NOTE: no pagination yet, and checkIn/checkOut availability filter is not implemented.
@@ -104,14 +118,67 @@ export const addReview = asyncHandler(async (req, res) => {
 
   const review = await Review.create({ listing: listing._id, user: req.user._id, rating, comment });
 
-  // Recalculate rating
-  const stats = await Review.aggregate([
-    { $match: { listing: listing._id } },
-    { $group: { _id: '$listing', avg: { $avg: '$rating' }, count: { $sum: 1 } } },
-  ]);
-  listing.avgRating = Math.round(stats[0].avg * 10) / 10;
-  listing.reviewCount = stats[0].count;
-  await listing.save();
+  await recalculateListingRating(listing._id);
 
   res.status(201).json(review);
+});
+
+// PUT /api/listings/:id/reviews/:reviewId
+export const updateReview = asyncHandler(async (req, res) => {
+  const { rating, comment } = req.body;
+  const review = await Review.findById(req.params.reviewId);
+
+  if (!review || !review.listing.equals(req.params.id)) {
+    res.status(404);
+    throw new Error('Review not found');
+  }
+
+  if (!review.user.equals(req.user._id)) {
+    res.status(403);
+    throw new Error('Not authorized to edit this review');
+  }
+
+  if (rating !== undefined) {
+    const numRating = Number(rating);
+    if (Number.isNaN(numRating) || numRating < 1 || numRating > 5) {
+      res.status(400);
+      throw new Error('Rating must be between 1 and 5');
+    }
+    review.rating = numRating;
+  }
+
+  if (comment !== undefined) {
+    if (!comment.trim()) {
+      res.status(400);
+      throw new Error('Comment cannot be empty');
+    }
+    review.comment = comment.trim();
+  }
+
+  await review.save();
+  await recalculateListingRating(review.listing);
+
+  await review.populate('user', 'name avatar');
+  res.json(review);
+});
+
+// DELETE /api/listings/:id/reviews/:reviewId
+export const deleteReview = asyncHandler(async (req, res) => {
+  const review = await Review.findById(req.params.reviewId);
+
+  if (!review || !review.listing.equals(req.params.id)) {
+    res.status(404);
+    throw new Error('Review not found');
+  }
+
+  if (!review.user.equals(req.user._id)) {
+    res.status(403);
+    throw new Error('Not authorized to delete this review');
+  }
+
+  const listingId = review.listing;
+  await review.deleteOne();
+  await recalculateListingRating(listingId);
+
+  res.json({ message: 'Review deleted' });
 });

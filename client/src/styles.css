@@ -55,9 +55,10 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; colo
 
 .hero { padding: 24px 0 28px; }
 .hero h1 { margin: 0 0 6px; font-size: 2.2rem; }
-.search-bar { display: flex; gap: 10px; padding: 12px; margin-top: 18px; }
-.search-bar input:first-child { flex: 2; }
-.search-bar .btn { flex-shrink: 0; }
+.search-bar { display: flex; gap: 10px; padding: 12px; margin-top: 18px; flex-wrap: wrap; align-items: center; }
+.search-bar input:first-child { flex: 2; min-width: 180px; }
+.search-bar input, .search-bar select { flex: 1; min-width: 125px; }
+.search-bar .btn { flex-shrink: 0; min-width: 100px; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 22px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }

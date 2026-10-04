@@ -4,7 +4,8 @@ import ListingCard from '../components/ListingCard.jsx';
 import Loader from '../components/Loader.jsx';
 import { STAY_TYPES } from '../utils/format.js';
 
-const initial = { city: '', type: '', guests: '', maxPrice: '' };
+const initial = { city: '', type: '', guests: '', maxPrice: '', checkIn: '', checkOut: '' };
+const today = new Date().toISOString().split('T')[0];
 
 export default function Home() {
   const [filters, setFilters] = useState(initial);
@@ -27,10 +28,21 @@ export default function Home() {
     search(initial);
   }, []);
 
-  const set = (key) => (e) => setFilters({ ...filters, [key]: e.target.value });
+  const set = (key) => (e) => {
+    const val = e.target.value;
+    if (key === 'checkIn' && filters.checkOut && val >= filters.checkOut) {
+      setFilters({ ...filters, checkIn: val, checkOut: '' });
+    } else {
+      setFilters({ ...filters, [key]: val });
+    }
+  };
 
   const submit = (e) => {
     e.preventDefault();
+    if (filters.checkIn && filters.checkOut && filters.checkIn >= filters.checkOut) {
+      setError('Check-out date must be after check-in date');
+      return;
+    }
     search(filters);
   };
 
@@ -45,6 +57,32 @@ export default function Home() {
             <option value="">Any type</option>
             {STAY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+          <input
+            type={filters.checkIn ? 'date' : 'text'}
+            placeholder="Check-in"
+            aria-label="Check-in date"
+            title="Check-in date"
+            value={filters.checkIn}
+            min={today}
+            onFocus={(e) => (e.target.type = 'date')}
+            onBlur={(e) => {
+              if (!e.target.value) e.target.type = 'text';
+            }}
+            onChange={set('checkIn')}
+          />
+          <input
+            type={filters.checkOut ? 'date' : 'text'}
+            placeholder="Check-out"
+            aria-label="Check-out date"
+            title="Check-out date"
+            value={filters.checkOut}
+            min={filters.checkIn || today}
+            onFocus={(e) => (e.target.type = 'date')}
+            onBlur={(e) => {
+              if (!e.target.value) e.target.type = 'text';
+            }}
+            onChange={set('checkOut')}
+          />
           <input type="number" min="1" placeholder="Guests" value={filters.guests} onChange={set('guests')} />
           <input type="number" min="0" placeholder="Max ₹/night" value={filters.maxPrice} onChange={set('maxPrice')} />
           <button className="btn">Search</button>

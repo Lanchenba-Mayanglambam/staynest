@@ -3,10 +3,10 @@ import Review from '../models/Review.js';
 import Booking from '../models/Booking.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
-// GET /api/listings?city=&type=&minPrice=&maxPrice=&guests=
-// NOTE: no pagination yet, and checkIn/checkOut availability filter is not implemented.
+// GET /api/listings?city=&type=&minPrice=&maxPrice=&guests=&checkIn=&checkOut=
+// NOTE: no pagination yet.
 export const getListings = asyncHandler(async (req, res) => {
-  const { city, type, minPrice, maxPrice, guests } = req.query;
+  const { city, type, minPrice, maxPrice, guests, checkIn, checkOut } = req.query;
   const filter = { isActive: true };
 
   if (city) filter.city = new RegExp(`^${city}`, 'i');
@@ -16,6 +16,43 @@ export const getListings = asyncHandler(async (req, res) => {
     filter.pricePerNight = {};
     if (minPrice) filter.pricePerNight.$gte = Number(minPrice);
     if (maxPrice) filter.pricePerNight.$lte = Number(maxPrice);
+  }
+
+  if (checkIn || checkOut) {
+    const start = checkIn ? new Date(checkIn) : null;
+    const end = checkOut ? new Date(checkOut) : null;
+
+    if (start && Number.isNaN(start.getTime())) {
+      res.status(400);
+      throw new Error('Invalid check-in date');
+    }
+    if (end && Number.isNaN(end.getTime())) {
+      res.status(400);
+      throw new Error('Invalid check-out date');
+    }
+    if (start && end && start >= end) {
+      res.status(400);
+      throw new Error('Check-out must be after check-in');
+    }
+
+    const bookingFilter = { status: { $in: ['pending', 'confirmed'] } };
+    if (start && end) {
+      bookingFilter.checkIn = { $lt: end };
+      bookingFilter.checkOut = { $gt: start };
+    } else if (start) {
+      const nextDay = new Date(start.getTime() + 86400000);
+      bookingFilter.checkIn = { $lt: nextDay };
+      bookingFilter.checkOut = { $gt: start };
+    } else if (end) {
+      const prevDay = new Date(end.getTime() - 86400000);
+      bookingFilter.checkIn = { $lt: end };
+      bookingFilter.checkOut = { $gt: prevDay };
+    }
+
+    const bookedListingIds = await Booking.find(bookingFilter).distinct('listing');
+    if (bookedListingIds.length > 0) {
+      filter._id = { $nin: bookedListingIds };
+    }
   }
 
   const listings = await Listing.find(filter).populate('host', 'name').sort({ createdAt: -1 });
